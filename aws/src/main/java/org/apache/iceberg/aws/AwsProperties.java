@@ -249,6 +249,15 @@ public class AwsProperties implements Serializable {
   public static final String S3_WRITE_TAGS_PREFIX = "s3.write.tags.";
 
   /**
+   * Used by {@link S3FileIO} to tag objects when deleting. To set, we can pass a catalog property.
+   * <p>
+   * For more details, see https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html
+   * <p>
+   * Example: s3.delete.tags.my_key=my_val
+   */
+  public static final String S3_DELETE_TAGS_PREFIX = "s3.delete.tags.";
+
+  /**
    * @deprecated will be removed at 0.15.0, please use {@link #S3_CHECKSUM_ENABLED_DEFAULT} instead
    */
   @Deprecated
@@ -265,6 +274,7 @@ public class AwsProperties implements Serializable {
   private ObjectCannedACL s3FileIoAcl;
   private boolean isS3ChecksumEnabled;
   private final Set<Tag> s3WriteTags;
+  private final Set<Tag> s3DeleteTags;
 
   private String glueCatalogId;
   private boolean glueCatalogSkipArchive;
@@ -284,6 +294,7 @@ public class AwsProperties implements Serializable {
     this.s3fileIoStagingDirectory = System.getProperty("java.io.tmpdir");
     this.isS3ChecksumEnabled = S3_CHECKSUM_ENABLED_DEFAULT;
     this.s3WriteTags = Sets.newHashSet();
+    this.s3DeleteTags = Sets.newHashSet();
 
     this.glueCatalogId = null;
     this.glueCatalogSkipArchive = GLUE_CATALOG_SKIP_ARCHIVE_DEFAULT;
@@ -343,6 +354,7 @@ public class AwsProperties implements Serializable {
         String.format("Deletion batch size must be between 1 and %s", S3FILEIO_DELETE_BATCH_SIZE_MAX));
 
     this.s3WriteTags = toTags(properties, S3_WRITE_TAGS_PREFIX);
+    this.s3DeleteTags = toTags(properties, S3_DELETE_TAGS_PREFIX);
 
     this.dynamoDbTableName = PropertyUtil.propertyAsString(properties, DYNAMODB_TABLE_NAME,
         DYNAMODB_TABLE_NAME_DEFAULT);
@@ -454,6 +466,10 @@ public class AwsProperties implements Serializable {
 
   public Set<Tag> getS3WriteTags() {
     return s3WriteTags;
+  }
+
+  public Set<Tag> getS3DeleteTags() {
+    return s3DeleteTags;
   }
 
   private Set<Tag> toTags(Map<String, String> properties, String prefix) {
