@@ -249,6 +249,15 @@ public class AwsProperties implements Serializable {
   public static final String S3_WRITE_TAGS_PREFIX = "s3.write.tags.";
 
   /**
+   * Used by {@link S3FileIO} to tag objects when deleting. To set, we can pass a catalog property.
+   * <p>
+   * For more details, see https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html
+   * <p>
+   * Example: s3.delete.tags.my_key=my_val
+   */
+  public static final String S3_DELETE_TAGS_PREFIX = "s3.delete.tags.";
+
+  /**
    * @deprecated will be removed at 0.15.0, please use {@link #S3_CHECKSUM_ENABLED_DEFAULT} instead
    */
   @Deprecated
@@ -272,6 +281,7 @@ public class AwsProperties implements Serializable {
   private boolean isS3ChecksumEnabled;
 
   private final Set<Tag> s3WriteTags;
+  private final Set<Tag> s3DeleteTags;
 
   public AwsProperties() {
     this.s3FileIoSseType = S3FILEIO_SSE_TYPE_NONE;
@@ -292,6 +302,7 @@ public class AwsProperties implements Serializable {
     this.dynamoDbTableName = DYNAMODB_TABLE_NAME_DEFAULT;
 
     this.s3WriteTags = Sets.newHashSet();
+    this.s3DeleteTags = Sets.newHashSet();
   }
 
   public AwsProperties(Map<String, String> properties) {
@@ -349,6 +360,7 @@ public class AwsProperties implements Serializable {
         DYNAMODB_TABLE_NAME_DEFAULT);
 
     this.s3WriteTags = toTags(properties, S3_WRITE_TAGS_PREFIX);
+    this.s3DeleteTags = toTags(properties, S3_DELETE_TAGS_PREFIX);
   }
 
   public String s3FileIoSseType() {
@@ -457,6 +469,10 @@ public class AwsProperties implements Serializable {
 
   public Set<Tag> getS3WriteTags() {
     return s3WriteTags;
+  }
+
+  public Set<Tag> getS3DeleteTags() {
+    return s3DeleteTags;
   }
 
   private Set<Tag> toTags(Map<String, String> properties, String prefix) {

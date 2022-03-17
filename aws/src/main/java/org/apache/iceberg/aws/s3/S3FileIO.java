@@ -40,6 +40,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Multimaps;
 import org.apache.iceberg.relocated.com.google.common.collect.SetMultimap;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.util.SerializableSupplier;
+import org.apache.iceberg.util.Tasks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -47,7 +48,13 @@ import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectTaggingRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectTaggingResponse;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.PutObjectTaggingRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.Tag;
+import software.amazon.awssdk.services.s3.model.Tagging;
 
 /**
  * FileIO implementation backed by S3.
@@ -108,6 +115,15 @@ public class S3FileIO implements FileIO, SupportsBulkOperations {
 
   @Override
   public void deleteFile(String path) {
+    if (!awsProperties.getS3DeleteTags().isEmpty()) {
+      try {
+        doSoftDelete(path);
+      } catch (S3Exception e) {
+        LOG.warn("Failed to add delete tags: {}", path, e);
+      }
+      return;
+    }
+
     S3URI location = new S3URI(path);
     DeleteObjectRequest deleteRequest =
         DeleteObjectRequest.builder().bucket(location.bucket()).key(location.key()).build();
@@ -125,6 +141,15 @@ public class S3FileIO implements FileIO, SupportsBulkOperations {
    */
   @Override
   public void deleteFiles(Iterable<String> paths) throws BulkDeletionFailureException {
+    if (!awsProperties.getS3DeleteTags().isEmpty()) {
+      Tasks.foreach(paths)
+          .noRetry()
+          .suppressFailureWhenFinished()
+          .onFailure((path, exc) -> LOG.warn("Failed to add delete tags: {}", path, exc))
+          .run(this::doSoftDelete);
+      return;
+    }
+
     SetMultimap<String, String> bucketToObjects = Multimaps.newSetMultimap(Maps.newHashMap(), Sets::newHashSet);
     int numberOfFailedDeletions = 0;
     for (String path : paths) {
@@ -153,6 +178,30 @@ public class S3FileIO implements FileIO, SupportsBulkOperations {
     if (numberOfFailedDeletions > 0) {
       throw new BulkDeletionFailureException(numberOfFailedDeletions);
     }
+  }
+
+  private void doSoftDelete(String path) throws S3Exception {
+    S3URI location = new S3URI(path);
+    String bucket = location.bucket();
+    String objectKey = location.key();
+    GetObjectTaggingRequest getObjectTaggingRequest = GetObjectTaggingRequest.builder()
+        .bucket(bucket)
+        .key(objectKey)
+        .build();
+    GetObjectTaggingResponse getObjectTaggingResponse = client()
+        .getObjectTagging(getObjectTaggingRequest);
+    // Get existing tags, if any and then add the delete tags
+    Set<Tag> tags = Sets.newHashSet();
+    if (getObjectTaggingResponse != null && getObjectTaggingResponse.hasTagSet()) {
+      tags.addAll(getObjectTaggingResponse.tagSet());
+    }
+    tags.addAll(awsProperties.getS3DeleteTags());
+    PutObjectTaggingRequest putObjectTaggingRequest = PutObjectTaggingRequest.builder()
+        .bucket(bucket)
+        .key(objectKey)
+        .tagging(Tagging.builder().tagSet(tags).build())
+        .build();
+    client().putObjectTagging(putObjectTaggingRequest);
   }
 
   private List<String> deleteObjectsInBucket(String bucket, Collection<String> objects) {
