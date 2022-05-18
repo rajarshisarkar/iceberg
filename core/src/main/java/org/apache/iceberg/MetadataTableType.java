@@ -28,6 +28,7 @@ public enum MetadataTableType {
   DELETE_FILES,
   HISTORY,
   SNAPSHOTS,
+  REFS,
   MANIFESTS,
   PARTITIONS,
   ALL_DATA_FILES,
